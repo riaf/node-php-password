@@ -1,107 +1,113 @@
-var bcrypt = require('bcrypt')
-  , _ = require('lodash')
-  , PASSWORD_BCRYPT = 1
-  , PASSWORD_DEFAULT = PASSWORD_BCRYPT;
+'use strict';
+
+const bcrypt = require('bcrypt');
+
+const PASSWORD_BCRYPT = 1;
+const PASSWORD_DEFAULT = PASSWORD_BCRYPT;
+
+const BCRYPT_IDENTIFIERS = new Set(['$2a$', '$2b$', '$2x$', '$2y$']);
 
 exports.get_info = get_info;
 exports.hash = hash;
 exports.needs_rehash = needs_rehash;
 exports.verify = verify;
+exports.password_get_info = get_info;
+exports.password_hash = hash;
+exports.password_needs_rehash = needs_rehash;
+exports.password_verify = verify;
+exports.password_algos = password_algos;
 exports.PASSWORD_DEFAULT = PASSWORD_DEFAULT;
 exports.PASSWORD_BCRYPT = PASSWORD_BCRYPT;
 
-/**
- * Returns information about the given hash
- *
- * @param {string} hash - A hash created by hash (password_hash).
- * @return {object} - Returns an object with three elements (algo, algoName, options).
- */
+function normalizeOptions(options) {
+  return {
+    cost: 10,
+    ...options,
+  };
+}
+
 function get_info(hash) {
-  var info = {
+  const info = {
     algo: 0,
     algoName: 'unknown',
-    options: {}
+    options: {},
   };
 
-  if (_.contains(['$2a$', '$2x$', '$2y$'], hash.substring(0, 4)) && hash.length === 60) {
+  if (typeof hash !== 'string') {
+    return info;
+  }
+
+  const prefix = hash.slice(0, 4);
+  if (BCRYPT_IDENTIFIERS.has(prefix) && hash.length === 60) {
     info.algo = PASSWORD_BCRYPT;
     info.algoName = 'bcrypt';
-    info.options.cost = parseInt(hash.substring(4, 2), 10);
+    info.options.cost = Number.parseInt(hash.slice(4, 6), 10);
   }
 
   return info;
 }
 
-/**
- * Creates a password hash
- *
- * @param {string} password - The user's password.
- * @param {integer} algo - A password algorithm constant denoting the algorithm to use when hashing the password.
- * @param {object} options - An associative array containing options.
- * @return {string}
- */
-function hash(password, algo, options) {
-  var salt
-    , hashedPassword
-    , algo = algo || PASSWORD_DEFAULT
-    , options = _.assign({ cost: 10, salt: null }, options);
-
-  switch (algo) {
-    case PASSWORD_BCRYPT:
-      if (options.cost < 4 || options.cost > 31) {
-        throw new Error("Invalid bcrypt cost parameter specified: " + options.cost);
-      }
-
-      salt = options.salt || bcrypt.genSaltSync(options.cost);
-      hashedPassword = bcrypt.hashSync(password, salt);
-
-      break;
-
-    default:
-      throw new Error("Unknown password hashing algorithm: " + algo);
+function resolveAlgo(algo) {
+  if (algo === undefined || algo === null) {
+    return PASSWORD_DEFAULT;
   }
 
-  return hashedPassword;
+  if (algo === PASSWORD_BCRYPT || algo === '2y' || algo === 'bcrypt') {
+    return PASSWORD_BCRYPT;
+  }
+
+  return algo;
 }
 
-/**
- * Checks if the given hash matches the given options
- *
- * @param {string} hash - A hash created by hash (password_hash).
- * @param {integer} algo - A password algorithm constant denoting the algorithm to use when hashing the password.
- * @param {object} options - An associative array containing options.
- */
-function needs_rehash(hash, algo, options) {
-  var info = get_info(hash)
-    , options = _.assign({ cost: 10, salt: null }, options);
+function hash(password, algo, options) {
+  const resolvedAlgo = resolveAlgo(algo);
+  const normalizedOptions = normalizeOptions(options);
 
-  if (info.algo !== algo) {
+  switch (resolvedAlgo) {
+    case PASSWORD_BCRYPT: {
+      if (!Number.isInteger(normalizedOptions.cost) || normalizedOptions.cost < 4 || normalizedOptions.cost > 31) {
+        throw new Error(`Invalid bcrypt cost parameter specified: ${normalizedOptions.cost}`);
+      }
+
+      return bcrypt.hashSync(password, normalizedOptions.cost);
+    }
+
+    default:
+      throw new Error(`Unknown password hashing algorithm: ${resolvedAlgo}`);
+  }
+}
+
+function needs_rehash(passwordHash, algo, options) {
+  const resolvedAlgo = resolveAlgo(algo);
+  const info = get_info(passwordHash);
+  const normalizedOptions = normalizeOptions(options);
+
+  if (info.algo !== resolvedAlgo) {
     return true;
   }
 
-  switch (algo) {
+  switch (resolvedAlgo) {
     case PASSWORD_BCRYPT:
-      if (info.options.cost !== options.cost) {
-        return true;
-      }
-      break;
+      return info.options.cost !== normalizedOptions.cost;
+    default:
+      return true;
   }
-
-  return false;
 }
 
-/**
- * Verifies that a password matches a hash
- *
- * @param {string} password - The user's password.
- * @param {string} hash - A hash created by hash (password_hash).
- */
-function verify(password, hash) {
-  var info = get_info(hash);
-
-  if (info.algo === PASSWORD_BCRYPT) {
-    hash = '$2a$' + hash.substring(4);
+function verify(password, passwordHash) {
+  const info = get_info(passwordHash);
+  if (info.algo !== PASSWORD_BCRYPT) {
+    return false;
   }
 
-  return bcrypt.compareSync(password, hash);
+  // bcrypt on Node.js accepts $2a$/$2b$, but PHP can emit $2y$.
+  const comparableHash = passwordHash.startsWith('$2y$')
+    ? `$2b$${passwordHash.slice(4)}`
+    : passwordHash;
+
+  return bcrypt.compareSync(password, comparableHash);
+}
+
+function password_algos() {
+  return ['2y'];
 }
