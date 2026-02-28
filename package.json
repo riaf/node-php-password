@@ -1,10 +1,15 @@
 {
   "name": "php-password",
-  "version": "0.0.1",
-  "description": "Compatibility with the password_* functions on PHP",
+  "version": "0.1.0",
+  "description": "Compatibility with PHP password_* functions on Node.js",
   "main": "index.js",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "oxlint ."
   },
   "repository": {
     "type": "git",
@@ -13,7 +18,8 @@
   "keywords": [
     "PHP",
     "Password",
-    "Security"
+    "Security",
+    "bcrypt"
   ],
   "author": "Keisuke SATO <riaf@me.com>",
   "license": "MIT",
@@ -22,7 +28,10 @@
   },
   "homepage": "https://github.com/riaf/node-php-password",
   "dependencies": {
-    "lodash": "~2.4.1",
-    "bcrypt": "~0.7.8"
+    "bcrypt": "^6.0.0"
+  },
+  "devDependencies": {
+    "oxlint": "^1.14.0",
+    "vitest": "^3.2.4"
   }
 }
